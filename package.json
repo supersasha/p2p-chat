@@ -1,0 +1,30 @@
+{
+  "name": "p2p",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "ts-node src/index.ts",
+    "build": "tsc"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.2"
+  },
+  "dependencies": {
+    "@chainsafe/libp2p-noise": "^16.0.0",
+    "@chainsafe/libp2p-yamux": "^7.0.1",
+    "@libp2p/bootstrap": "^11.0.6",
+    "@libp2p/identify": "^3.0.6",
+    "@libp2p/kad-dht": "^13.1.2",
+    "@libp2p/peer-id": "^5.0.4",
+    "@libp2p/peer-id-factory": "^4.2.4",
+    "@libp2p/tcp": "^10.0.7",
+    "libp2p": "^2.1.5"
+  }
+}
