@@ -11,6 +11,8 @@ import { createEd25519PeerId } from '@libp2p/peer-id-factory';
 import { generateKeyPair, privateKeyFromRaw, publicKeyFromRaw } from '@libp2p/crypto/keys';
 import { PrivateKey } from '@libp2p/interface';
 import { peerIdFromPrivateKey, peerIdFromPublicKey } from '@libp2p/peer-id';
+import { lpStream } from 'it-length-prefixed-stream';
+
 
 import bootstrappers from './bootstrappers.js'
 
@@ -82,6 +84,23 @@ async function main() {
     console.log('Looking for friend peer...');
     const peerInfo = await node.peerRouting.findPeer(friendPeerId);
     console.log('Friend peer info:', peerInfo);
+
+    const duplex = await node.dialProtocol(friendPeerId, '/xyz-chat/1.0.0');
+    const stream = lpStream(duplex);
+    await stream.write(Buffer.from('friend', 'utf8'));
+    const answer = await stream.read();
+    for (const ans of answer) {
+      console.log('Got answer:', Buffer.from(ans).toString('utf8'));
+    }
+  } else {
+    await node.handle('/xyz-chat/1.0.0', async ({ stream: duplex }) => {
+      const stream = lpStream(duplex);
+      const query = await stream.read();
+      for (const q of query) {
+        const name = Buffer.from(q).toString('utf8');
+        await stream.write(Buffer.from(`Hello, ${name}`, 'utf8'));
+      }
+    });
   }
 }
 
