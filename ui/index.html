@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Client</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        #chat-container {
+            border: 1px solid #ccc;
+            padding: 10px;
+            width: 400px;
+            height: 300px;
+            overflow-y: scroll;
+            margin-bottom: 10px;
+        }
+        #port-input {
+            margin-bottom: 10px;
+        }
+        #message-input {
+            width: 300px;
+            margin-right: 10px;
+        }
+        #connect-btn, #send-btn {
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+<h2>Chat Client</h2>
+
+<label for="port">Port:</label>
+<input type="text" id="port-input" placeholder="Enter port">
+<button id="connect-btn">Connect</button>
+
+<div id="chat-container"></div>
+
+<input type="text" id="message-input" placeholder="Enter your message">
+<button id="send-btn" disabled>Send</button>
+
+<script>
+    const connectBtn = document.getElementById('connect-btn');
+    const sendBtn = document.getElementById('send-btn');
+    const portInput = document.getElementById('port-input');
+    const messageInput = document.getElementById('message-input');
+    const chatContainer = document.getElementById('chat-container');
+
+    let socket;
+
+    // Function to append message to chat
+    function appendMessage(message) {
+        const messageElement = document.createElement('div');
+        messageElement.textContent = message;
+        chatContainer.appendChild(messageElement);
+        chatContainer.scrollTop = chatContainer.scrollHeight; // Scroll to the bottom
+    }
+
+    // Connect to chat server
+    connectBtn.addEventListener('click', () => {
+        const port = portInput.value;
+        if (!port) {
+            alert('Please enter a port number');
+            return;
+        }
+
+        socket = new WebSocket(`ws://localhost:${port}`);
+
+        socket.addEventListener('open', () => {
+            appendMessage('Connected to server');
+            sendBtn.disabled = false; // Enable send button
+        });
+
+        socket.addEventListener('message', (event) => {
+            appendMessage(`Them: ${JSON.parse(event.data).text}`);
+        });
+
+        socket.addEventListener('close', () => {
+            appendMessage('Disconnected from server');
+            sendBtn.disabled = true; // Disable send button
+        });
+
+        socket.addEventListener('error', (error) => {
+            appendMessage(`Error: ${error.message}`);
+        });
+    });
+
+    // Send message to server
+    sendBtn.addEventListener('click', () => {
+        const message = messageInput.value;
+        if (message && socket && socket.readyState === WebSocket.OPEN) {
+            //console.log('Message:', message);
+            socket.send(JSON.stringify({ type: 'new-message',  text: message }));
+            appendMessage(`You: ${message}`);
+            messageInput.value = ''; // Clear input field
+        }
+    });
+</script>
+
+</body>
+</html>

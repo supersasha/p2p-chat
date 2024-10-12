@@ -3,16 +3,17 @@ import fs from 'fs/promises';
 import { noise } from '@chainsafe/libp2p-noise';
 import { yamux } from '@chainsafe/libp2p-yamux';
 import { bootstrap } from '@libp2p/bootstrap';
-import { identify } from '@libp2p/identify';
-import { kadDHT, removePrivateAddressesMapper } from '@libp2p/kad-dht';
+import { identify, Identify } from '@libp2p/identify';
+import { kadDHT, removePrivateAddressesMapper, KadDHT } from '@libp2p/kad-dht';
 import { tcp } from '@libp2p/tcp';
-import { createLibp2p } from 'libp2p';
+import { createLibp2p, Libp2p } from 'libp2p';
 import { createEd25519PeerId } from '@libp2p/peer-id-factory';
 import { generateKeyPair, privateKeyFromRaw, publicKeyFromRaw } from '@libp2p/crypto/keys';
-import { PrivateKey } from '@libp2p/interface';
+import { PrivateKey, Stream } from '@libp2p/interface';
 import { peerIdFromPrivateKey, peerIdFromPublicKey } from '@libp2p/peer-id';
-import { lpStream } from 'it-length-prefixed-stream';
-
+import { LengthPrefixedStream, lpStream } from 'it-length-prefixed-stream';
+import * as commander from 'commander';
+import { WebSocketServer, WebSocket } from 'ws';
 
 import bootstrappers from './bootstrappers.js'
 
@@ -45,9 +46,26 @@ async function createPeerId() {
 }
 */
 
+type MessageFromUI = {
+  type: 'new-message';
+  text: string;
+};
+
+type MessageToUI = {
+  type: 'new-message';
+  text: string;
+};
+
 async function main() {
-  const [_n, _s, privKeyPath, friendPubKeyB64] = process.argv;
-  const privateKey = await getPrivateKey(privKeyPath);
+  const program = new commander.Command();
+  program.option('-k, --private-key <path>', 'Private key file path')
+    .option('-f, --friend-key <base64>', 'Friend\'s public key (base64)')
+    .option('-p, --port <number>', 'Websocket server port', (p) => parseInt(p, 10));
+  program.parse();
+  const options = program.opts();
+
+  //const [_n, _s, privKeyPath, friendPubKeyB64] = process.argv;
+  const privateKey = await getPrivateKey(options.privateKey);
   const publicKeyB64 = Buffer.from(privateKey.publicKey.raw).toString('base64');
   console.log('My public key:', publicKeyB64);
   //const peerId = await peerIdFromPrivateKey(privateKey);
@@ -75,85 +93,64 @@ async function main() {
     },
     privateKey,
   });
-
-  console.log('My peerId:', node.peerId);
-
-  if (friendPubKeyB64) {
-    const friendPubKey = publicKeyFromBase64(friendPubKeyB64);
-    const friendPeerId = peerIdFromPublicKey(friendPubKey);
-    console.log('Looking for friend peer...');
-    const peerInfo = await node.peerRouting.findPeer(friendPeerId);
-    console.log('Friend peer info:', peerInfo);
-
-    const duplex = await node.dialProtocol(friendPeerId, '/xyz-chat/1.0.0');
-    const stream = lpStream(duplex);
-    await stream.write(Buffer.from('friend', 'utf8'));
-    const answer = await stream.read();
-    for (const ans of answer) {
-      console.log('Got answer:', Buffer.from(ans).toString('utf8'));
-    }
-  } else {
-    await node.handle('/xyz-chat/1.0.0', async ({ stream: duplex }) => {
-      const stream = lpStream(duplex);
-      const query = await stream.read();
-      for (const q of query) {
-        const name = Buffer.from(q).toString('utf8');
-        await stream.write(Buffer.from(`Hello, ${name}`, 'utf8'));
-      }
-    });
-  }
-}
-
-main();
-
-/*
-  //node.contentRouting.provide(cid)
-
-  // !!! First
-  // !!! node.contentRouting.put(someKey, peerId);
-  // Then find peerId by known key
-  //const str = Buffer.from("123456").toString('base64url');
-  //Buffer.from(str, 'base64url');
-
-
+  
   node.addEventListener('peer:connect', (evt) => {
     const peerId = evt.detail
-    //console.log('Connection established to:', peerId.toString()) // Emitted when a peer has been found
+    console.log('Connection established to:', peerId.toString()) // Emitted when a peer has been found
   })
 
   node.addEventListener('peer:discovery', (evt) => {
     const peerInfo = evt.detail
 
-    //console.log('Discovered:', peerInfo.id.toString())
+    console.log('Discovered:', peerInfo.id.toString())
   })
-*/
 
-//const peerInfo = await node.peerRouting.findPeer(node.peerId);
-//console.log("My peer info:", peerInfo);
+  console.log('My peerId:', node.peerId);
 
+  const stream: LengthPrefixedStream<Stream> = await getStream(options.friendKey, node);
 
-/*
-import { kadDHT, removePrivateAddressesMapper } from '@libp2p/kad-dht'
-import { createLibp2p } from 'libp2p';
-import { peerIdFromString } from '@libp2p/peer-id';
-import { identify } from '@libp2p/identify';
+  const wss = new WebSocketServer({ port: options.port || 8500 });
+  const ws: WebSocket = await new Promise((resolve) => wss.on('connection', resolve));
 
-async function main() {
-  const node = await createLibp2p({
-    services: {
-      aminoDHT: kadDHT({
-        protocol: '/ipfs/kad/1.0.0',
-        peerInfoMapper: removePrivateAddressesMapper
-      }),
-      identify: identify(),
+  ws.on('message', async (buf) => {
+    const json = buf.toString('utf8');
+    const msgFromUI: MessageFromUI = JSON.parse(json);
+    if (msgFromUI.type === 'new-message') {
+      await stream.write(Buffer.from(msgFromUI.text, 'utf8'));
     }
-  })
+  });
 
-  const peerId = peerIdFromString('QmFoo')
-  const peerInfo = await node.peerRouting.findPeer(peerId)
-
-  console.info(peerInfo) // peer id, multiaddrs
+  while (true) {
+    const ans = await stream.read();
+    const textFromFriend = Buffer.from(ans.subarray(0, ans.length)).toString('utf8');
+    const msg: MessageToUI = {
+      type: 'new-message',
+      text: textFromFriend
+    };
+    ws.send(JSON.stringify(msg));
+  }
 }
 
 main();
-*/
+
+
+async function getStream(friendKey: string | undefined, node: Libp2p<{ kadDHT: KadDHT; identify: Identify; }>): Promise<LengthPrefixedStream<Stream>> {
+  if (friendKey) {
+    const friendPubKey = publicKeyFromBase64(friendKey);
+    const friendPeerId = peerIdFromPublicKey(friendPubKey);
+    console.log('Looking for friend peer...', friendPeerId);
+    const peerInfo = await node.peerRouting.findPeer(friendPeerId);
+    console.log('Friend peer info:', peerInfo);
+
+    const duplex = await node.dialProtocol(friendPeerId, '/xyz-chat/1.0.0');
+    return lpStream(duplex);
+  } else {
+    return await new Promise(async (resolve) => {
+      await node.handle('/xyz-chat/1.0.0', async ({ stream: duplex, connection }) => {
+        //if (connection.remotePeer ===)
+        const stream = lpStream(duplex);
+        resolve(stream);
+      });
+    });
+  }
+}

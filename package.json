@@ -25,7 +25,10 @@
     "@libp2p/peer-id": "^5.0.4",
     "@libp2p/peer-id-factory": "^4.2.4",
     "@libp2p/tcp": "^10.0.7",
+    "@types/ws": "^8.5.12",
+    "commander": "^12.1.0",
     "it-length-prefixed-stream": "^1.2.0",
-    "libp2p": "^2.1.5"
+    "libp2p": "^2.1.5",
+    "ws": "^8.18.0"
   }
 }
